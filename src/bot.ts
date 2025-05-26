@@ -1,4 +1,6 @@
+import { handleCommand } from "./commands.js";
 import { getTokens, type Tokens } from "./db/index.js";
+import type { NotificationPayload, WelcomeMessagePayload } from "./twitch.js";
 
 let websocketSessionID: string;
 const TWITCH_WEBSOCKET_URL = "wss://eventsub.wss.twitch.tv/ws";
@@ -25,7 +27,7 @@ async function validateAuth(tokens: Tokens): Promise<Tokens> {
     process.exit(1);
   }
 
-  return tokens
+  return tokens;
 }
 
 function startWebSocketClient(tokens: Tokens) {
@@ -40,37 +42,54 @@ function startWebSocketClient(tokens: Tokens) {
     const data = JSON.parse(event.data);
 
     switch (data.metadata.message_type) {
-      case "session_welcome": // First message you get from the WebSocket server when connecting
-        websocketSessionID = data.payload.session.id; // Register the Session ID it gives us
+      case "session_welcome": {
+        const payload: WelcomeMessagePayload = data.payload;
+        // First message you get from the WebSocket server when connecting
+        websocketSessionID = payload.session.id; // Register the Session ID it gives us
 
         // Listen to EventSub, which joins the chatroom from your bot's account
-        registerEventSubListeners(tokens);
+        registerEventSubListeners(tokens.access);
         break;
-      case "notification": // An EventSub notification has occurred, such as channel.chat.message
-        switch (data.metadata.subscription_type) {
+      }
+      case "notification": {
+        const payload: NotificationPayload = data.payload;
+
+        // An EventSub notification has occurred, such as channel.chat.message
+        switch (payload.subscription.type) {
           case "channel.chat.message":
-            console.log("EVENT", JSON.stringify(data, null, 2))
-            // First, print the message to the program's console.
+            // console.log("Message Payload", JSON.stringify(payload, null, 2));
             console.log(
-              `MSG #${data.payload.event.broadcaster_user_login} <${data.payload.event.chatter_user_login}> ${data.payload.event.message.text}`,
+              `MSG #${payload.event.broadcaster_user_login} <${payload.event.chatter_user_login}> ${payload.event.message.text}`,
             );
 
-            // Then check to see if that message was "HeyGuys"
-            if (data.payload.event.message.text.trim() == "HeyGuys") {
-              sendChatMessage("HELLO DINGUS", tokens);
-            }
+            handleCommand({
+              message: payload.event.message.text.trim(),
+              broadcaster: {
+                id: payload.event.broadcaster_user_id,
+                login: payload.event.broadcaster_user_name,
+              },
+              chatter: {
+                id: payload.event.chatter_user_id,
+                login: payload.event.chatter_user_login,
+              },
+              badges: payload.event.badges.map((b) => ({ type: b.set_id })),
+            }).then((result) => {
+              if (result != null) sendChatMessage(result, tokens.access);
+            });
+
             break;
         }
         break;
+      }
     }
   };
 }
 
-async function sendChatMessage(chatMessage: string, tokens: Tokens) {
+async function sendChatMessage(chatMessage: string, accessToken: string) {
   let response = await fetch("https://api.twitch.tv/helix/chat/messages", {
     method: "POST",
     headers: {
-      Authorization: "Bearer " + tokens.access,
+      Authorization: "Bearer " + accessToken,
       "Client-Id": process.env.CLIENT_ID,
       "Content-Type": "application/json",
     },
@@ -90,14 +109,14 @@ async function sendChatMessage(chatMessage: string, tokens: Tokens) {
   }
 }
 
-async function registerEventSubListeners(tokens: Tokens) {
+async function registerEventSubListeners(accessToken: string) {
   // Register channel.chat.message
   let response = await fetch(
     "https://api.twitch.tv/helix/eventsub/subscriptions",
     {
       method: "POST",
       headers: {
-        Authorization: "Bearer " + tokens.access,
+        Authorization: "Bearer " + accessToken,
         "Client-Id": process.env.CLIENT_ID,
         "Content-Type": "application/json",
       },

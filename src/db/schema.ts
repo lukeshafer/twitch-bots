@@ -6,7 +6,9 @@ export const tokensTable = sqliteTable("user_tokens", {
   refresh_token: text().notNull(),
 });
 
-export const commandsTables = sqliteTable("commands", {
+export const commands = sqliteTable("commands", {
   name: text().primaryKey(),
   text: text().notNull(),
+  user_id: text().notNull(),
+  user_login: text().notNull(),
 });

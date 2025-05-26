@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/libsql";
-import { tokensTable } from "./schema.js";
+import { tokensTable, commands } from "./schema.js";
 import { eq } from "drizzle-orm";
 
 const db = drizzle(process.env.DB_FILE_NAME);
@@ -46,4 +46,35 @@ export async function getTokens(userID: string): Promise<Tokens> {
   }
 
   return tokens;
+}
+
+export async function createCommand(args: {
+  name: string;
+  text: string;
+  userID: string;
+  userLogin: string;
+}) {
+  await db
+    .insert(commands)
+    .values({
+      name: args.name,
+      text: args.text,
+      user_id: args.userID,
+      user_login: args.userLogin,
+    });
+}
+
+export async function getCommandText(name: string): Promise<string | null> {
+  let result = await db
+    .select({ text: commands.text })
+    .from(commands)
+    .where(eq(commands.name, name));
+
+  const cmd = result.at(0);
+
+  if (cmd == undefined) {
+    return null;
+  }
+
+  return cmd.text;
 }

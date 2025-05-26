@@ -57,7 +57,7 @@ export async function getTokenFromCode(options: {
 }): Promise<{
   accessToken: string;
   refreshToken: string;
-  idToken: string
+  idToken: string;
 }> {
   let params = new URLSearchParams({
     client_id: process.env.CLIENT_ID!,
@@ -91,6 +91,58 @@ export async function getTokenFromCode(options: {
   };
 }
 
-type TwitchWelcomeMessage = {
-
+export interface WelcomeMessagePayload {
+  session: {
+    status: "connected";
+    id: string;
+    connected_at: string;
+    reconnect_url: string | null;
+    keepalive_timeout_seconds: number;
+  };
 }
+
+interface NotificationPayloadBase {
+  subscription: {
+    id: string;
+    type: string;
+  };
+}
+
+interface ChannelChatMessagePayload extends NotificationPayloadBase {
+  subscription: {
+    id: string;
+    type: "channel.chat.message";
+  };
+  event: {
+    broadcaster_user_id: string;
+    broadcaster_user_login: string;
+    broadcaster_user_name: string;
+    chatter_user_id: string;
+    chatter_user_login: string;
+    chatter_user_name: string;
+    message: {
+      text: string;
+      fragments: Array<{
+        type: string;
+        text: string;
+      }>;
+    };
+    badges: Array<{
+      set_id: string;
+      id: string;
+      info: string;
+    }>;
+  };
+}
+
+
+export type NotificationPayload = ChannelChatMessagePayload;
+
+// type Message<Type extends string, Payload> = {
+//   metadata: {
+//     message_type: Type;
+//     message_id: string;
+//     message_timestamp: string;
+//   };
+//   payload: Payload;
+// };
