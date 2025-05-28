@@ -1,4 +1,4 @@
-import { buildAuthURL, getTokenFromCode, verifyState } from "./twitch.js";
+import { buildAuthURL, getTokenFromCode, verifyState } from "./lib/twitch.js";
 import { Hono } from "hono";
 import { decode } from "hono/jwt";
 import { html } from "hono/html";
@@ -82,7 +82,7 @@ app.get("/callback", async (c) => {
 });
 
 export default function startServer() {
-  serve({ fetch: app.fetch, port: PORT }, (info) => {
+  return serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`Server is running on http://localhost:${info.port}`);
   });
 }

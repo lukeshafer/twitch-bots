@@ -1,7 +1,8 @@
+import { randomInt } from "crypto";
 import type { Tokens } from "../db/index.js";
-import type { NotificationPayload } from "../twitch.js";
+import type { NotificationPayload } from "./twitch.js";
 
-type MessageOptions = {
+export type MessageOptions = {
   message: string;
   chatter: { id: string; login: string };
   broadcaster: { id: string; login: string };
@@ -16,22 +17,26 @@ type Commands = Record<string, CommandAction | undefined>;
 
 type TwitchBotOptions = {
   name: string;
-  tokens: Tokens;
   botUserID: string;
   channelUserID: string;
+  tokens: Tokens;
+  clientID: string;
+  clientSecret: string;
   commands?: Commands;
+  color?: (typeof Format.FgColors)[number];
 
+  onTokenRefresh?: (tokens: Tokens) => Promise<any>;
   onMessage?: (options: MessageOptions) => any;
   onCommandMissing?: (
     options: MessageOptions,
   ) => string | null | Promise<string | null>;
-  // onTokenRefresh: (tokens: Tokens) => unknown;
 };
 
 export class TwitchBot {
   static readonly WebsocketURL = "wss://eventsub.wss.twitch.tv/ws";
   static readonly ChatMessageURL = "https://api.twitch.tv/helix/chat/messages";
   static readonly ValidateAuthURL = "https://id.twitch.tv/oauth2/validate";
+  static readonly TokenURL = "https://id.twitch.tv/oauth2/token";
   static readonly CommandPrefix = "!";
 
   static checkIsModerator(options: MessageOptions): boolean {
@@ -49,15 +54,36 @@ export class TwitchBot {
 
   name: string;
   tokens: Tokens;
+
   userID: string;
   channelUserID: string;
   commands: Commands;
   #websocketSessionID?: string;
+  #color: string;
 
-  #messageHandler?: (options: MessageOptions) => any;
-  #commandMissingHandler?: (
-    options: MessageOptions,
-  ) => string | null | Promise<string | null>;
+  #clientID: string;
+  #clientSecret: string;
+
+  #onMessage?: ((options: MessageOptions) => any) | undefined;
+  set onMessage(value: ((options: MessageOptions) => any) | undefined) {
+    this.#onMessage = value;
+  }
+
+  #onCommandMissing?:
+    | ((options: MessageOptions) => string | null | Promise<string | null>)
+    | undefined;
+  set onCommandMissing(
+    value:
+      | ((options: MessageOptions) => string | null | Promise<string | null>)
+      | undefined,
+  ) {
+    this.#onCommandMissing = value;
+  }
+
+  #onTokenRefresh?: ((tokens: Tokens) => Promise<any>) | undefined;
+  set onTokenRefresh(value: ((tokens: Tokens) => Promise<any>) | undefined) {
+    this.#onTokenRefresh = value;
+  }
 
   constructor(options: TwitchBotOptions) {
     this.name = options.name;
@@ -65,23 +91,60 @@ export class TwitchBot {
     this.userID = options.botUserID;
     this.commands = options.commands ?? {};
     this.channelUserID = options.channelUserID;
+    this.#clientID = options.clientID;
+    this.#clientSecret = options.clientSecret;
 
-    this.#messageHandler = options.onMessage;
-    this.#commandMissingHandler = options.onCommandMissing;
+    if (options.color) {
+      this.#color = Format[options.color];
+    } else {
+      this.#color = Format.RandomFG;
+    }
+
+    this.onMessage = options.onMessage;
+    this.onCommandMissing = options.onCommandMissing;
+    this.onTokenRefresh = options.onTokenRefresh;
+  }
+
+  get #logprefix() {
+    return `${this.#color}<${this.name}>${Format.Reset} `;
+  }
+
+  fancylog(text: TemplateStringsArray, ...replacements: any[]) {
+    const string =
+      `${this.#color}<${this.name}>${Format.Reset} ` +
+      String.raw(text, ...replacements); // no sanitization
+
+    return {
+      get info() {
+        return console.info(string);
+      },
+      get error() {
+        return console.error(string);
+      },
+      get warn() {
+        return console.error();
+      },
+    };
   }
 
   log(...args: any) {
-    console.log(`<${this.name}> `, ...args);
+    console.log(this.#logprefix, ...args);
   }
   error(...args: any) {
-    console.error(`<${this.name}> `, ...args);
+    console.error(this.#logprefix, ...args);
+  }
+  warn(...args: any) {
+    console.warn(this.#logprefix, ...args);
   }
 
   async authenticate(): Promise<boolean> {
-    let response = await fetch(TwitchBot.ValidateAuthURL, {
-      method: "GET",
-      headers: { Authorization: "OAuth " + this.tokens.access },
-    });
+    let response = await this.fetchWithTokenRefresh(
+      () =>
+        new Request(TwitchBot.ValidateAuthURL, {
+          method: "GET",
+          headers: { Authorization: "OAuth " + this.tokens.access },
+        }),
+    );
 
     if (response.status !== 200) {
       let data = await response.json();
@@ -91,21 +154,22 @@ export class TwitchBot {
       );
       this.error(data);
       return false;
-      // process.exit(1);
+      process.exit(1);
     }
 
     return true;
   }
 
-  start() {
-    let ws = new WebSocket(TwitchBot.WebsocketURL);
-    ws.onerror = this.error;
+  #ws?: WebSocket;
+  #startWS() {
+    this.#ws = new WebSocket(TwitchBot.WebsocketURL);
+    this.#ws.onerror = this.error;
 
-    ws.onopen = () => {
+    this.#ws.onopen = () => {
       this.log("Bot Websocket connection opened to", TwitchBot.WebsocketURL);
     };
 
-    ws.onmessage = (event) => {
+    this.#ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
       switch (data.metadata.message_type) {
@@ -139,7 +203,7 @@ export class TwitchBot {
                 badges: event.badges.map((b) => ({ type: b.set_id })),
               };
 
-              this.#messageHandler?.(msgOptions);
+              this.#onMessage?.(msgOptions);
               this.#handleCommand(msgOptions).then((result) => {
                 if (result != null) this.sendMessage(result);
               });
@@ -152,30 +216,38 @@ export class TwitchBot {
     };
   }
 
+  start() {
+    this.authenticate().then(() => this.#startWS());
+  }
+
+  stop(code?: number, reason?: string) {
+    this.#ws?.close(code, reason);
+  }
+
   async #registerEventSubListeners() {
     // Register channel.chat.message
-    let response = await fetch(
-      "https://api.twitch.tv/helix/eventsub/subscriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + this.tokens.access,
-          "Client-Id": process.env.CLIENT_ID,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          type: "channel.chat.message",
-          version: "1",
-          condition: {
-            broadcaster_user_id: process.env.CHAT_CHANNEL_USER_ID,
-            user_id: process.env.BOT_USER_ID,
+    let response = await this.fetchWithTokenRefresh(
+      () =>
+        new Request("https://api.twitch.tv/helix/eventsub/subscriptions", {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + this.tokens.access,
+            "Client-Id": this.#clientID,
+            "Content-Type": "application/json",
           },
-          transport: {
-            method: "websocket",
-            session_id: this.#websocketSessionID,
-          },
+          body: JSON.stringify({
+            type: "channel.chat.message",
+            version: "1",
+            condition: {
+              broadcaster_user_id: this.channelUserID,
+              user_id: this.userID,
+            },
+            transport: {
+              method: "websocket",
+              session_id: this.#websocketSessionID,
+            },
+          }),
         }),
-      },
     );
 
     if (response.status != 202) {
@@ -200,8 +272,8 @@ export class TwitchBot {
     const action = this.commands[cmd.name];
 
     if (action == undefined) {
-      if (this.#commandMissingHandler != undefined) {
-        return this.#commandMissingHandler(options);
+      if (this.#onCommandMissing != undefined) {
+        return this.#onCommandMissing(options);
       } else {
         return null;
       }
@@ -222,19 +294,22 @@ export class TwitchBot {
   }
 
   async sendMessage(msg: string) {
-    let response = await fetch("https://api.twitch.tv/helix/chat/messages", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + this.tokens.access,
-        "Client-Id": process.env.CLIENT_ID,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        broadcaster_id: process.env.CHAT_CHANNEL_USER_ID,
-        sender_id: process.env.BOT_USER_ID,
-        message: msg,
-      }),
-    });
+    let response = await this.fetchWithTokenRefresh(
+      () =>
+        new Request(TwitchBot.ChatMessageURL, {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer " + this.tokens.access,
+            "Client-Id": this.#clientID,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: msg,
+            sender_id: this.userID,
+            broadcaster_id: this.channelUserID,
+          }),
+        }),
+    );
 
     if (response.status !== 200) {
       let data = await response.json();
@@ -244,4 +319,143 @@ export class TwitchBot {
       this.log("Sent chat message:", msg);
     }
   }
+
+  async #refreshTokens(): Promise<boolean> {
+    const prevRefresh = this.tokens.refresh;
+
+    const params = new URLSearchParams({
+      client_id: this.#clientID,
+      client_secret: this.#clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: prevRefresh,
+    });
+
+    const response = await fetch(TwitchBot.TokenURL, {
+      method: "POST",
+      body: params.toString(),
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+
+    if (response.status !== 200) {
+      let data = await response.text();
+      this.error("Failed to send chat message");
+      this.error(data);
+
+      return false;
+    }
+
+    let body = await response.json();
+
+    const newAccess: string = body.access_token;
+    const newRefresh: string = body.refresh_token;
+
+    await this.#onTokenRefresh?.({
+      access: newAccess,
+      refresh: newRefresh,
+    });
+
+    this.tokens.access = newAccess;
+    this.tokens.refresh = newRefresh;
+
+    return true;
+  }
+
+  #fetchID = 0;
+  async fetchWithTokenRefresh(req: () => Request): Promise<Response> {
+    let fetchID = (this.#fetchID++).toString().padStart(4, "0");
+    let requestColor = Format.FgGray;
+    let request = req();
+
+    const logstr = (str: string) =>
+      `${requestColor}Fetch ${fetchID} ${str} ${Format.Reset}`;
+
+    this.log(logstr(`Sending fetch request to "${request.url}"...`));
+    let resp = await fetch(request);
+    if (resp.status === 401) {
+      this.warn(
+        logstr(
+          `Request to "${request.url}" returned unauthorized. Refreshing...`,
+        ),
+      );
+      let success = await this.#refreshTokens();
+      if (success) {
+        this.log(logstr(`Tokens refreshed! Re-fetching...`));
+        resp = await fetch(req());
+      } else {
+        this.error(logstr("Unable to refresh token!"));
+      }
+    }
+
+    this.log(logstr(`Response status: "${resp.statusText}"`));
+
+    return resp;
+  }
+}
+
+class Format {
+  static readonly Reset = "\x1b[0m";
+  static readonly Bright = "\x1b[1m";
+  static readonly Dim = "\x1b[2m";
+  static readonly Underscore = "\x1b[4m";
+  static readonly Blink = "\x1b[5m";
+  static readonly Reverse = "\x1b[7m";
+  static readonly Hidden = "\x1b[8m";
+
+  static readonly FgBlack = "\x1b[30m";
+  static readonly FgRed = "\x1b[31m";
+  static readonly FgGreen = "\x1b[32m";
+  static readonly FgYellow = "\x1b[33m";
+  static readonly FgBlue = "\x1b[34m";
+  static readonly FgMagenta = "\x1b[35m";
+  static readonly FgCyan = "\x1b[36m";
+  static readonly FgWhite = "\x1b[37m";
+  static readonly FgGray = "\x1b[90m";
+
+  static readonly BgBlack = "\x1b[40m";
+  static readonly BgRed = "\x1b[41m";
+  static readonly BgGreen = "\x1b[42m";
+  static readonly BgYellow = "\x1b[43m";
+  static readonly BgBlue = "\x1b[44m";
+  static readonly BgMagenta = "\x1b[45m";
+  static readonly BgCyan = "\x1b[46m";
+  static readonly BgWhite = "\x1b[47m";
+  static readonly BgGray = "\x1b[100m";
+
+  static FgColors = [
+    "FgRed",
+    "FgBlue",
+    "FgCyan",
+    // "FgGray",
+    // "FgBlack",
+    "FgGreen",
+    "FgWhite",
+    "FgYellow",
+    "FgMagenta",
+  ] as const satisfies Array<keyof typeof Format>;
+
+  static BgColors = [
+    "BgRed",
+    "BgBlue",
+    "BgCyan",
+    "BgGray",
+    "BgBlack",
+    "BgGreen",
+    "BgWhite",
+    "BgYellow",
+    "BgMagenta",
+  ] as const satisfies Array<keyof typeof Format>;
+
+  static get RandomFG() {
+    return Format[randomItem(Format.FgColors)];
+  }
+
+  static get RandomBG() {
+    return Format[randomItem(Format.BgColors)];
+  }
+}
+
+function randomItem<T>(array: ReadonlyArray<T>): T {
+  return array[randomInt(array.length)];
 }

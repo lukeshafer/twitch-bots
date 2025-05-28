@@ -29,7 +29,10 @@ export async function upsertTokens(
     });
 }
 
-export async function getTokens(userID: string): Promise<Tokens> {
+export async function getTokens(
+  userID: string,
+  name?: string,
+): Promise<Tokens> {
   let result = await db
     .select({
       access: tokensTable.access_token,
@@ -41,7 +44,9 @@ export async function getTokens(userID: string): Promise<Tokens> {
   const tokens = result.at(0);
 
   if (tokens == undefined) {
-    console.error(`Please register an access token for ${userID}`);
+    console.error(
+      `Please register an access token for ${userID}${name ? ` (${name})` : ""}`,
+    );
     process.exit(1);
   }
 
@@ -54,14 +59,12 @@ export async function createCommand(args: {
   userID: string;
   userLogin: string;
 }) {
-  await db
-    .insert(commands)
-    .values({
-      name: args.name,
-      text: args.text,
-      user_id: args.userID,
-      user_login: args.userLogin,
-    });
+  await db.insert(commands).values({
+    name: args.name,
+    text: args.text,
+    user_id: args.userID,
+    user_login: args.userLogin,
+  });
 }
 
 export async function getCommandText(name: string): Promise<string | null> {
