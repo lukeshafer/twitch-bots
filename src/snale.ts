@@ -58,6 +58,9 @@ export function createSnaleBot(tokens: Tokens) {
     commands: {
       momo: "We're raising money to cover Momo's (my cat) medical expenses! All Subs and Bits go towards the goal, or you can donate at https://chuffed.org/project/131797-help-us-cover-momos-medical-bills",
       addcommand: (options) => addCommand(options),
+      lurk: (options) => {
+        return `hell yeah, thanks for the lurk @${options.chatter.login}`
+      },
       modstatus: (options) =>
         TwitchBot.checkIsModerator(options)
           ? `@${options.chatter.login} is a moderator`
