@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const tokensTable = sqliteTable("user_tokens", {
@@ -11,4 +12,7 @@ export const commands = sqliteTable("commands", {
   text: text().notNull(),
   user_id: text().notNull(),
   user_login: text().notNull(),
+  timestamp: text("timestamp")
+    .notNull()
+    .default(sql`(current_timestamp)`),
 });

@@ -1,6 +1,6 @@
-import { randomInt } from "crypto";
 import type { Tokens } from "../db/index.js";
 import type { NotificationPayload } from "./twitch.js";
+import { randomItem } from "./utils.js";
 
 export type MessageOptions = {
   message: string;
@@ -109,24 +109,6 @@ export class TwitchBot {
     return `${this.#color}<${this.name}>${Format.Reset} `;
   }
 
-  fancylog(text: TemplateStringsArray, ...replacements: any[]) {
-    const string =
-      `${this.#color}<${this.name}>${Format.Reset} ` +
-      String.raw(text, ...replacements); // no sanitization
-
-    return {
-      get info() {
-        return console.info(string);
-      },
-      get error() {
-        return console.error(string);
-      },
-      get warn() {
-        return console.error();
-      },
-    };
-  }
-
   log(...args: any) {
     console.log(this.#logprefix, ...args);
   }
@@ -135,6 +117,10 @@ export class TwitchBot {
   }
   warn(...args: any) {
     console.warn(this.#logprefix, ...args);
+  }
+  debug(...args: any){
+    if (process.env.NODE_DEBUG !== "1") return
+    console.debug(this.#logprefix, ...args);
   }
 
   async authenticate(): Promise<boolean> {
@@ -169,8 +155,15 @@ export class TwitchBot {
       this.log("Bot Websocket connection opened to", TwitchBot.WebsocketURL);
     };
 
+    this.#ws.onclose = (event) => {
+      this.log(
+        Format.FgYellow + `Bot Websocket connection closed: "${event.reason}"` + Format.Reset,
+      );
+    };
+
     this.#ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      this.debug(JSON.stringify(data, null, 2))
 
       switch (data.metadata.message_type) {
         case "session_welcome":
@@ -392,6 +385,12 @@ export class TwitchBot {
 
     return resp;
   }
+
+  getCommandsList = (): Array<{ name: string; text: string }> =>
+    Object.entries(this.commands).map(([name, text]) => ({
+      name,
+      text: typeof text === "string" ? text : "[ Dynamic command action. ]",
+    }));
 }
 
 class Format {
@@ -456,6 +455,3 @@ class Format {
   }
 }
 
-function randomItem<T>(array: ReadonlyArray<T>): T {
-  return array[randomInt(array.length)];
-}

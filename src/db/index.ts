@@ -67,6 +67,17 @@ export async function createCommand(args: {
   });
 }
 
+export async function updateCommand(args: { name: string; text: string }) {
+  await db
+    .update(commands)
+    .set({ text: args.text })
+    .where(eq(commands.name, args.name));
+}
+
+export async function deleteCommand(name: string) {
+  await db.delete(commands).where(eq(commands.name, name));
+}
+
 export async function getCommandText(name: string): Promise<string | null> {
   let result = await db
     .select({ text: commands.text })
@@ -80,4 +91,10 @@ export async function getCommandText(name: string): Promise<string | null> {
   }
 
   return cmd.text;
+}
+
+export async function getAllCommands() {
+  let result = await db.select().from(commands);
+
+  return result;
 }

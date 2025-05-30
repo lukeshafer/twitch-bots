@@ -1,3 +1,5 @@
+import { randomInt } from "crypto";
+
 export function exitHandler(handler: () => void) {
   // do something when app is closing
   process.on("exit", handler);
@@ -10,4 +12,8 @@ export function exitHandler(handler: () => void) {
 
   // catches uncaught exceptions
   process.on("uncaughtException", handler);
+}
+
+export function randomItem<T>(array: ReadonlyArray<T>): T {
+  return array[randomInt(array.length)];
 }

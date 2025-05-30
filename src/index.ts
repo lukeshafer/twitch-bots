@@ -14,7 +14,7 @@ const toxicMan = createToxicManBot(
 
 snaleBot.start();
 toxicMan.start();
-startServer();
+startServer(snaleBot);
 
 exitHandler(() => {
   snaleBot.stop();
