@@ -30,3 +30,6 @@ lerna-debug.log*
 # sqlite databases
 *.db
 *.db.*
+
+# sst
+.sst
