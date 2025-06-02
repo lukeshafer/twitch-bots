@@ -233,33 +233,5 @@ app.post("/bots/toxic-man", async (c) => {
 
   return c.res;
 });
-//
-// app.post("/setup-app-token", async (c) => {
-//   try {
-//     const token = await generateAppAccessToken();
-//     await setAppAccessToken(token);
-//     return c.redirect(`/?Success=Saved app access token.`);
-//   } catch (error) {
-//     console.error(error);
-//     return c.redirect(
-//       `/?error=An error occurred with retrieving the access token.`,
-//     );
-//   }
-// });
-
-// app.post("/setup-bots", async (c) => {
-//   const snale = await setupSnaleBot();
-//   const toxic = await setupToxicMan();
-//
-//   try {
-//     await snale.registerEventSubListeners();
-//     await toxic.registerEventSubListeners();
-//   } catch (error: any) {
-//     console.error("An error occurred.", JSON.stringify(error));
-//     return c.json(error);
-//   }
-//
-//   return c.redirect(`/?message=Registered%20bots!`);
-// });
 
 export const handler = handle(app);
