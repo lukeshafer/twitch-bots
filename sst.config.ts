@@ -8,7 +8,9 @@ export default $config({
       protect: ["production"].includes(input?.stage),
       home: "aws",
       providers: {
-        aws: { region: "us-east-2" },
+        aws: {
+          region: input?.stage === "production" ? "us-west-1" : "us-east-2",
+        },
       },
     };
   },

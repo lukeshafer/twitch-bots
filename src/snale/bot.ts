@@ -14,7 +14,12 @@ export async function setupSnaleBot() {
     botUsername: "its_snale_bot",
     logColor: "FgCyan",
     clientID: Resource.TwitchClientID.value,
-    commands: { test: "Snale bot is working" },
+    commands: {
+      test: "Snale bot is working",
+      lurk: (e) =>
+        new TwitchBot.Message(`have a good lurk @${e.chatter.login}!!`),
+      unlurk: (e) => new TwitchBot.Message(`welcome back @${e.chatter.login}!`),
+    },
     clientSecret: Resource.TwitchClientSecret.value,
     botUserID: Resource.AppConfig.SnaleUserID,
     channelUserID: Resource.AppConfig.BroadcasterUserID,

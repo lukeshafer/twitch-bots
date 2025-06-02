@@ -33,6 +33,7 @@ app.get("/", async (c) => {
   const snaleCommands = await setupSnaleBot()
     .then((bot) => bot.getCommandsList())
     .catch(() => []);
+
   const toxicCommands = await setupToxicMan()
     .then((bot) => bot.getCommandsList())
     .catch(() => []);
