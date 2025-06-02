@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "strict": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true,
+    // "skipLibCheck": true,
     "noUnusedLocals": true,
     "types": [
       "node"
@@ -13,5 +13,11 @@
     "jsxImportSource": "hono/jsx",
     "outDir": "./dist"
   },
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules"
+  ],
+  "include": [
+    "src/**/*",
+    "sst-env.d.ts"
+  ]
 }

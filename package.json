@@ -10,9 +10,12 @@
     "start": "node --env-file=.env dist/index.js"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.821.0",
+    "@aws-sdk/client-ssm": "^3.821.0",
     "@hono/node-server": "^1.14.2",
     "@libsql/client": "^0.15.7",
     "drizzle-orm": "^0.43.1",
+    "electrodb": "^3.4.1",
     "hono": "^4.7.10",
     "sst": "3.17.0",
     "valibot": "^1.1.0"

@@ -5,10 +5,29 @@
 
 declare module "sst" {
   export interface Resource {
+    "BotData": {
+      "name": string
+      "type": "sst.aws.Dynamo"
+    }
     "TwitchBotApi": {
       "name": string
       "type": "sst.aws.Function"
       "url": string
+    }
+    "TwitchClientID": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "TwitchClientSecret": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
+    "TwitchConfig": {
+      "BroadcasterUserID": string
+      "SnaleUserID": string
+      "TokensBaseSSMPath": string
+      "ToxicUserID": string
+      "type": "sst.sst.Linkable"
     }
   }
 }
