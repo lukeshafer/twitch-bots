@@ -29,28 +29,40 @@ export default $config({
     const clientID = new sst.Secret("TwitchClientID");
     const clientSecret = new sst.Secret("TwitchClientSecret");
 
-    const twitchConfig = new sst.Linkable("TwitchConfig", {
+    const domain =
+      $app.stage === "production"
+        ? "twitch-bots.lksh.dev"
+        : `${$app.stage}.dev.twitch-bots.lksh.dev`;
+
+    const appConfig = new sst.Linkable("AppConfig", {
       properties: {
         SnaleUserID: "1312291952",
         ToxicUserID: "1316393910",
         BroadcasterUserID: "144313393",
         TokensBaseSSMPath: `/twitch-bots/${$app.name}/${$app.stage}/user-access-tokens/`,
+        DomainName: domain,
       } as const,
     });
 
     const ssmPermission = sst.aws.permission({
-      actions: ["ssm:GetParameter", "ssm:PutParameter"],
+      actions: ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter"],
       resources: ["*"],
     });
 
+    const apiRouter = new sst.aws.Router("ApiRouter", { domain });
+
     const api = new sst.aws.Function("TwitchBotApi", {
-      url: true,
+      url: {
+        router: {
+          instance: apiRouter,
+        },
+      },
       environment: {
         TWITCHBOTS_DEBUG: $dev === true ? "true" : "",
       },
       handler: "src/index.handler",
       copyFiles: [{ from: "public" }],
-      link: [clientID, clientSecret, twitchConfig, db],
+      link: [clientID, clientSecret, appConfig, db, apiRouter],
       permissions: [ssmPermission],
     });
   },

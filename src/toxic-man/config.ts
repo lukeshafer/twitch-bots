@@ -237,7 +237,7 @@ export const reactions = {
   spaghet: "SpaGHety? ? yumm!",
   british: "no British! here! ",
   toxicman: "HUhh???",
-  eatgarbage: "EatTINg GARBage! :) .",
+  eatgarbage: "EatTINg GARBage! :) <3 .",
   eggegg: "egg",
   mywife: "I loVE! my wife :) PLS DO NOT TALK TO",
   piss: "yubky >:( .",

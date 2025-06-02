@@ -1,7 +1,6 @@
 import { Resource } from "sst";
 import { TwitchBot } from "../bot.js";
 import { getTwitchTokens, setTwitchTokens } from "../auth.js";
-import type { Context } from "hono";
 import {
   addCommand,
   editCommand,
@@ -9,23 +8,24 @@ import {
   removeCommand,
 } from "./commands.js";
 
-export async function setupSnaleBot(path: string, c: Context) {
+export async function setupSnaleBot() {
   const snale = new TwitchBot({
     name: "SnaleBot",
+    botUsername: "its_snale_bot",
     logColor: "FgCyan",
     clientID: Resource.TwitchClientID.value,
     commands: { test: "Snale bot is working" },
     clientSecret: Resource.TwitchClientSecret.value,
-    botUserID: (Resource.TwitchConfig.SnaleUserID),
-    channelUserID: (Resource.TwitchConfig.BroadcasterUserID),
-    webhookCallback: `https://${new URL(c.req.url).hostname}${path}`,
-    tokens: await getTwitchTokens((Resource.TwitchConfig.SnaleUserID)),
+    botUserID: Resource.AppConfig.SnaleUserID,
+    channelUserID: Resource.AppConfig.BroadcasterUserID,
+    webhookCallback: `${Resource.ApiRouter.url}/bots/snale`,
+    tokens: await getTwitchTokens(Resource.AppConfig.SnaleUserID),
   });
 
   snale.commands.modstatus = (options) =>
     snale.checkIsModerator(options)
       ? new TwitchBot.Message(`@${options.chatter.login} is a moderator`)
-      : new TwitchBot.Message( `@${options.chatter.login} is NOT a moderator` );
+      : new TwitchBot.Message(`@${options.chatter.login} is NOT a moderator`);
 
   snale.commands.addcommand = (options) => addCommand(snale, options);
   snale.commands.editcommand = (options) => editCommand(snale, options);

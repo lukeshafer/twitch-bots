@@ -60,7 +60,7 @@ let Tokens = v.object({
 });
 
 const tokenParamName = (userID: string) =>
-  Resource.TwitchConfig.TokensBaseSSMPath + userID;
+  Resource.AppConfig.TokensBaseSSMPath + userID;
 
 export async function setTwitchTokens(userID: string, tokens: Tokens) {
   const payload: Tokens = {
@@ -94,14 +94,14 @@ export async function getTwitchTokens(userID: string) {
   } catch (error) {
     await ssm.send(
       new SSM.DeleteParameterCommand({ Name: tokenParamName(userID) }),
-    );
+    ).catch(() => { /* param may not exist */});
     console.error(error);
     throw new Error("Failed to parse Twitch tokens");
   }
 }
 
 const appTokenParamName =
-  Resource.TwitchConfig.TokensBaseSSMPath + "app-access-token";
+  Resource.AppConfig.TokensBaseSSMPath + "app-access-token";
 export async function setAppAccessToken(token: string) {
   await ssm.send(
     new SSM.PutParameterCommand({

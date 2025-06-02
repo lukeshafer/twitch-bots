@@ -5,6 +5,18 @@
 
 declare module "sst" {
   export interface Resource {
+    "ApiRouter": {
+      "type": "sst.aws.Router"
+      "url": string
+    }
+    "AppConfig": {
+      "BroadcasterUserID": string
+      "DomainName": string
+      "SnaleUserID": string
+      "TokensBaseSSMPath": string
+      "ToxicUserID": string
+      "type": "sst.sst.Linkable"
+    }
     "BotData": {
       "name": string
       "type": "sst.aws.Dynamo"
@@ -21,13 +33,6 @@ declare module "sst" {
     "TwitchClientSecret": {
       "type": "sst.sst.Secret"
       "value": string
-    }
-    "TwitchConfig": {
-      "BroadcasterUserID": string
-      "SnaleUserID": string
-      "TokensBaseSSMPath": string
-      "ToxicUserID": string
-      "type": "sst.sst.Linkable"
     }
   }
 }

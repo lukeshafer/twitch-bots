@@ -401,4 +401,10 @@ export class TwitchBot {
 
     return false;
   }
+
+  getCommandsList = (): Array<{ name: string; text: string }> =>
+    Object.entries(this.commands).map(([name, text]) => ({
+      name,
+      text: typeof text === "string" ? text : "[ Dynamic command action. ]",
+    }));
 }

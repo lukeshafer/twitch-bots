@@ -1,4 +1,3 @@
-import type { Context } from "hono";
 import { Resource } from "sst";
 import { TwitchBot } from "../bot.js";
 import { getTwitchTokens, setTwitchTokens } from "../auth.js";
@@ -7,7 +6,7 @@ import { answers, reactions, responses } from "./config.js";
 import { buildName } from "./utils.js";
 import { toxicResponseTimeout } from "../data.js";
 
-export async function setupToxicMan(path: string, c: Context) {
+export async function setupToxicMan() {
   const toxicMan = new TwitchBot({
     name: "ToxicMan",
     logColor: "FgRed",
@@ -30,10 +29,10 @@ export async function setupToxicMan(path: string, c: Context) {
         }),
     },
     clientSecret: Resource.TwitchClientSecret.value,
-    botUserID: Resource.TwitchConfig.ToxicUserID,
-    channelUserID: Resource.TwitchConfig.BroadcasterUserID,
-    webhookCallback: `https://${new URL(c.req.url).hostname}${path}`,
-    tokens: await getTwitchTokens(Resource.TwitchConfig.ToxicUserID),
+    botUserID: Resource.AppConfig.ToxicUserID,
+    channelUserID: Resource.AppConfig.BroadcasterUserID,
+    webhookCallback: `${Resource.ApiRouter.url}/bots/toxic-man`,
+    tokens: await getTwitchTokens(Resource.AppConfig.ToxicUserID),
   });
 
   toxicMan.onTokenRefresh = async (tokens) =>
@@ -49,12 +48,15 @@ export async function setupToxicMan(path: string, c: Context) {
     }
 
     try {
+      let noWhitespace = e.message
+        .toLowerCase()
+        .split(" ")
+        .map((s) => s.trim())
+        .join("");
+
       let key: keyof typeof reactions;
       for (key in reactions) {
-        if (
-          e.message.toLowerCase().includes(key) &&
-          (await checkIfCanReact(key))
-        ) {
+        if (noWhitespace.includes(key) && (await checkIfCanReact(key))) {
           toxicMan.sendMessage(reactions[key]!);
           break;
         }

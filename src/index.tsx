@@ -17,34 +17,97 @@ import {
 import { Resource } from "sst";
 import { setupSnaleBot } from "./snale/bot.js";
 import { setupToxicMan } from "./toxic-man/bot.js";
+import { commands } from "./data.js";
+import { serveStatic } from "@hono/node-server/serve-static";
 
 const app = new Hono();
 
 app.get("/", async (c) => {
-  let url = new URL(c.req.url);
+  const dbCommands = await commands.scan.go({ pages: "all" }).then(({ data }) =>
+    data.map((cmd) => ({
+      name: cmd.name,
+      text: cmd.text,
+    })),
+  );
 
+  const snaleCommands = await setupSnaleBot()
+    .then((bot) => bot.getCommandsList())
+    .catch(() => []);
+  const toxicCommands = await setupToxicMan()
+    .then((bot) => bot.getCommandsList())
+    .catch(() => []);
+
+  return c.html(
+    <html>
+      <head>
+        <link rel="stylesheet" href="/style.css" />
+      </head>
+      <body>
+        {Object.entries(c.req.query()).map(([key, value]) => (
+          <p
+            style={
+              key.toLowerCase().includes("error") ? "color: red;" : undefined
+            }
+          >
+            <b>{key}</b>: {value}
+          </p>
+        ))}
+
+        <form method="post" action="/login">
+          <button type="submit">Login</button>
+        </form>
+        <div>
+          <header>
+            <h1>Commands from DB</h1>
+          </header>
+          <table>
+            <thead style="opacity: 0.75;">
+              <tr>
+                <td>Source</td>
+                <td>Command</td>
+                <td>Text</td>
+              </tr>
+            </thead>
+            <tbody>
+              {dbCommands.map(({ name, text }) => (
+                <tr>
+                  <td>db</td>
+                  <td>!{name}</td>
+                  <td>{text}</td>
+                </tr>
+              ))}
+              {snaleCommands.map(({ name, text }) => (
+                <tr>
+                  <td>Snale Bot</td>
+                  <td>!{name}</td>
+                  <td>{text}</td>
+                </tr>
+              ))}
+              {toxicCommands.map(({ name, text }) => (
+                <tr>
+                  <td>Toxic Man</td>
+                  <td>!{name}</td>
+                  <td>{text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </body>
+    </html>,
+  );
+});
+
+app.use("*", serveStatic({ root: "./public" }));
+
+app.post("/login", async (c) => {
   let authURL = createAuthURL({
     state: await generateState(),
     clientID: Resource.TwitchClientID.value,
-    redirectUri: `https://${url.hostname}/callback`,
+    redirectUri: `${Resource.ApiRouter.url}/callback`,
   });
 
-  const queries = c.req.query();
-
-  return c.html(
-    <>
-      {Object.keys(queries).length ? (
-        <pre>{JSON.stringify(queries, null, 2)}</pre>
-      ) : null}
-      <a href={authURL}>Authorize</a>
-      <form method="post" action="/setup-app-token">
-        <button type="submit">Setup app access token</button>
-      </form>
-      <form method="post" action="/setup-bots">
-        <button type="submit">Setup bots</button>
-      </form>
-    </>,
-  );
+  return c.redirect(authURL);
 });
 
 const Claims = v.object({
@@ -69,37 +132,68 @@ app.get("/callback", async (c) => {
   }
 
   if (!state || !code) {
-    return c.html(
-      <>
-        {state ? "" : <p style="color:red;">STATE MISSING</p>}
-        {code ? "" : <p style="color:red;">CODE MISSING</p>}
-      </>,
-    );
+    const params = new URLSearchParams({
+      error: (state ? "" : "STATE MISSING ") + (code ? "" : "CODE MISSING"),
+    });
+    return c.redirect(`/?` + params.toString());
   }
 
   let isValidState = verifyState(state);
   if (!isValidState) {
-    return c.html(<p style="color:red;">INVALID STATE</p>);
+    const params = new URLSearchParams({
+      error: "INVALID STATE",
+    });
+    return c.redirect(`/?` + params.toString());
   }
-
-  let url = new URL(c.req.url);
 
   try {
     const tokens = await generateAuthTokensFromAccessCode({
       code,
-      redirectUri: `https://${url.hostname}/callback`,
+      redirectUri: `${Resource.ApiRouter.url}/callback`,
     });
 
-    const claims = v.parse(Claims, decode(tokens.idToken).payload);
-
-    await setTwitchTokens(claims.sub, {
+    const tokensToSave = {
       access: tokens.accessToken,
       refresh: tokens.refreshToken,
-    });
+    };
 
-    const params = new URLSearchParams({
-      message: `Tokens saved for ${claims.sub} (${claims.preferred_username})`,
-    });
+    const claims = v.parse(Claims, decode(tokens.idToken).payload);
+    const params = new URLSearchParams();
+
+    switch (claims.sub) {
+      case Resource.AppConfig.ToxicUserID:
+        await setTwitchTokens(claims.sub, tokensToSave);
+        await setupToxicMan().then((bot) => bot.registerEventSubListeners());
+        params.set(
+          "Success",
+          "Tokens saved, eventsub listeners registered for Toxic Man!",
+        );
+        break;
+
+      case Resource.AppConfig.SnaleUserID:
+        await setTwitchTokens(claims.sub, tokensToSave);
+        await setupSnaleBot().then((bot) => bot.registerEventSubListeners());
+        params.set(
+          "Success",
+          "Tokens saved, eventsub listeners registered for Snale Bot!",
+        );
+        break;
+
+      case Resource.AppConfig.BroadcasterUserID:
+        await setTwitchTokens(claims.sub, tokensToSave);
+        await generateAppAccessToken().then(setAppAccessToken);
+        params.set("notice", "Refreshed App Access Token!");
+        break;
+
+      default: {
+        console.error("Not an approved user!", JSON.stringify(claims));
+        params.set(
+          "Error",
+          `Not an approved user: ${claims.sub} (${claims.preferred_username})`,
+        );
+        break;
+      }
+    }
 
     return c.redirect(`/?${params.toString()}`);
   } catch (e: any) {
@@ -112,8 +206,7 @@ app.post("/bots/snale", async (c) => {
   const { response, body } = await handleTwitchRequest(c);
   if (response) return response;
 
-  const snale = await setupSnaleBot("/bots/snale", c);
-
+  const snale = await setupSnaleBot();
   switch (body.subscription.type) {
     case "channel.chat.message": {
       console.log("Received message: ", body.event.message.text);
@@ -129,8 +222,7 @@ app.post("/bots/toxic-man", async (c) => {
   const { response, body } = await handleTwitchRequest(c);
   if (response) return response;
 
-  const toxicMan = await setupToxicMan("/bots/toxic-man", c);
-
+  const toxicMan = await setupToxicMan();
   switch (body.subscription.type) {
     case "channel.chat.message": {
       console.log("Received message: ", body.event.message.text);
@@ -142,32 +234,32 @@ app.post("/bots/toxic-man", async (c) => {
   return c.res;
 });
 //
-app.post("/setup-app-token", async (c) => {
-  try {
-    const token = await generateAppAccessToken();
-    await setAppAccessToken(token);
-    return c.redirect(`/?message=Saved app access token.`);
-  } catch (error) {
-    console.error(error);
-    return c.redirect(
-      `/?error=An error occurred with retrieving the access token.`,
-    );
-  }
-});
+// app.post("/setup-app-token", async (c) => {
+//   try {
+//     const token = await generateAppAccessToken();
+//     await setAppAccessToken(token);
+//     return c.redirect(`/?Success=Saved app access token.`);
+//   } catch (error) {
+//     console.error(error);
+//     return c.redirect(
+//       `/?error=An error occurred with retrieving the access token.`,
+//     );
+//   }
+// });
 
-app.post("/setup-bots", async (c) => {
-  const snale = await setupSnaleBot("/bots/snale", c);
-  const toxic = await setupToxicMan("/bots/toxic-man", c);
-
-  try {
-    await snale.registerEventSubListeners();
-    await toxic.registerEventSubListeners();
-  } catch (error: any) {
-    console.error("An error occurred.", JSON.stringify(error));
-    return c.json(error);
-  }
-
-  return c.redirect(`/?message=Registered%20bots!`);
-});
+// app.post("/setup-bots", async (c) => {
+//   const snale = await setupSnaleBot();
+//   const toxic = await setupToxicMan();
+//
+//   try {
+//     await snale.registerEventSubListeners();
+//     await toxic.registerEventSubListeners();
+//   } catch (error: any) {
+//     console.error("An error occurred.", JSON.stringify(error));
+//     return c.json(error);
+//   }
+//
+//   return c.redirect(`/?message=Registered%20bots!`);
+// });
 
 export const handler = handle(app);
