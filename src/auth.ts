@@ -63,12 +63,17 @@ const tokenParamName = (userID: string) =>
   Resource.TwitchConfig.TokensBaseSSMPath + userID;
 
 export async function setTwitchTokens(userID: string, tokens: Tokens) {
+  const payload: Tokens = {
+    access: tokens.access,
+    refresh: tokens.refresh,
+  };
+
   await ssm.send(
     new SSM.PutParameterCommand({
       Overwrite: true,
       Type: "SecureString",
       Name: tokenParamName(userID),
-      Value: JSON.stringify({ access: tokens.access, refresh: tokens.refresh }),
+      Value: JSON.stringify(payload),
     }),
   );
 }

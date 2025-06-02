@@ -28,6 +28,7 @@ type Commands = Record<string, CommandAction | undefined>;
 type TwitchBotInit = {
   name: string;
   botUserID: string;
+  botUsername: string;
   channelUserID: string;
   tokens: Tokens;
   clientID: string;
@@ -60,6 +61,7 @@ export class TwitchBot {
 
   #logColor: string;
   userID: string;
+  username: string;
   #clientID: string;
   commands: Commands;
   channelUserID: string;
@@ -75,6 +77,7 @@ export class TwitchBot {
     this.name = options.name;
     this.tokens = options.tokens;
     this.userID = options.botUserID;
+    this.username = options.botUsername;
     this.commands = options.commands ?? {};
     this.channelUserID = options.channelUserID;
     this.#clientID = options.clientID;
@@ -97,7 +100,7 @@ export class TwitchBot {
   error = (...args: any) => console.error(this.#logprefix, ...args);
   warn = (...args: any) => console.warn(this.#logprefix, ...args);
   debug = (...args: any) =>
-    process.env.NODE_DEBUG === "1"
+    process.env.TWITCHBOTS_DEBOG === "true"
       ? console.debug(this.#logprefix, ...args)
       : undefined;
 
@@ -123,12 +126,7 @@ export class TwitchBot {
     await this.onMessage?.(msgOptions);
     await this.handleCommand(msgOptions).then((res) => {
       if (!res) return;
-      if (res.replyToID) {
-        // FIXME: should be a reply not message
-        return this.sendMessage(res.message);
-      } else {
-        return this.sendMessage(res.message);
-      }
+      return this.sendMessage(res.message, { replyTo: res.replyToID });
     });
   }
 
@@ -168,7 +166,7 @@ export class TwitchBot {
       broadcaster_id: this.channelUserID,
     };
 
-    // if (options?.replyTo) body.reply_parent_message_id = options.replyTo;
+    if (options?.replyTo) body.reply_parent_message_id = options.replyTo;
 
     let response = await this.fetchWithTokenRefresh(
       () =>

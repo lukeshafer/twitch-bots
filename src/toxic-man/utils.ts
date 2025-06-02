@@ -1,4 +1,4 @@
-import { randomItem } from "../lib/utils.js";
+import { randomItem } from "../utils.js";
 import { names } from "./config.js";
 
 export function buildName(): string {

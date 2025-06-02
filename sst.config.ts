@@ -46,9 +46,9 @@ export default $config({
     const api = new sst.aws.Function("TwitchBotApi", {
       url: true,
       environment: {
-        NODE_DEBUG: $dev === true ? "1" : "0",
+        TWITCHBOTS_DEBUG: $dev === true ? "true" : "",
       },
-      handler: "src/lambda/index.handler",
+      handler: "src/index.handler",
       copyFiles: [{ from: "public" }],
       link: [clientID, clientSecret, twitchConfig, db],
       permissions: [ssmPermission],

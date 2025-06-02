@@ -84,3 +84,21 @@ export const commands = new Entity(
   },
   config,
 );
+
+export const toxicResponseTimeout = new Entity(
+  {
+    model: { entity: "toxic-response-timeout", version: "1", service },
+    attributes: {
+      keyword: { type: "string", required: true },
+      expiration: { type: "number", required: true },
+      ...dateAttributes(),
+    },
+    indexes: {
+      primary: {
+        pk: { field: "pk", composite: ["keyword"] },
+        sk: { field: "sk", composite: [] },
+      },
+    },
+  },
+  config,
+)

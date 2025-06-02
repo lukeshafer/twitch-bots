@@ -5,14 +5,19 @@ import { getTwitchTokens, setTwitchTokens } from "../auth.js";
 import { randomItem } from "../utils.js";
 import { answers, reactions, responses } from "./config.js";
 import { buildName } from "./utils.js";
+import { toxicResponseTimeout } from "../data.js";
 
 export async function setupToxicMan(path: string, c: Context) {
   const toxicMan = new TwitchBot({
     name: "ToxicMan",
     logColor: "FgRed",
+    botUsername: "ieatgarbage69_420",
     clientID: Resource.TwitchClientID.value,
     commands: {
-      test: "hhhhhhheee pleas, Do NOT talk to!! !",
+      test:
+        process.env.SST_DEV === "true"
+          ? "hhhhhhheee pleas, Do NOT talk to!! !"
+          : undefined,
       ask: (e) =>
         new TwitchBot.Message({
           message: randomItem(answers),
@@ -34,14 +39,22 @@ export async function setupToxicMan(path: string, c: Context) {
   toxicMan.onTokenRefresh = async (tokens) =>
     setTwitchTokens(toxicMan.userID, tokens);
 
-  toxicMan.onMessage = (e) => {
+  toxicMan.onMessage = async (e) => {
     if (e.chatter.id === toxicMan.userID) return null;
     toxicMan.debug("Message received...", JSON.stringify(e, null, 2));
+
+    if (e.message.includes(`@${toxicMan.username}`)) {
+      toxicMan.sendMessage(randomItem(responses), { replyTo: e.messageID });
+      return;
+    }
 
     try {
       let key: keyof typeof reactions;
       for (key in reactions) {
-        if (e.message.toLowerCase().includes(key)) {
+        if (
+          e.message.toLowerCase().includes(key) &&
+          (await checkIfCanReact(key))
+        ) {
           toxicMan.sendMessage(reactions[key]!);
           break;
         }
@@ -53,4 +66,19 @@ export async function setupToxicMan(path: string, c: Context) {
   };
 
   return toxicMan;
+}
+
+const RESPONSE_TTL = 600_000; // 10 minutes
+async function checkIfCanReact(keyword: string): Promise<boolean> {
+  const now = Date.now();
+  const { data } = await toxicResponseTimeout.get({ keyword }).go();
+  if (data && data.expiration > now) {
+    return false;
+  }
+
+  await toxicResponseTimeout
+    .put({ keyword, expiration: now + RESPONSE_TTL })
+    .go();
+
+  return true;
 }
