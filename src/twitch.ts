@@ -3,10 +3,12 @@ import crypto from "crypto";
 import { twitchEvents } from "./data.js";
 import * as v from "valibot";
 import type { Context } from "hono";
+import { fetchWithAccessToken } from "./auth.js";
 
 export const Twitch = {
   AuthURL: "https://id.twitch.tv/oauth2/authorize",
   TokenURL: "https://id.twitch.tv/oauth2/token",
+  StreamsURL: "https://api.twitch.tv/helix/streams",
   WebsocketURL: "wss://eventsub.wss.twitch.tv/ws",
   ChatMessageURL: "https://api.twitch.tv/helix/chat/messages",
   ValidateAuthURL: "https://id.twitch.tv/oauth2/validate",
@@ -353,4 +355,67 @@ export async function generateAppAccessToken(): Promise<string> {
   }
 
   return data.access_token;
+}
+
+const StreamInfo = v.object({
+  id: v.string(),
+  user_id: v.string(),
+  user_name: v.string(),
+  game_id: v.string(),
+  game_name: v.string(),
+  type: v.literal("live"),
+  title: v.string(),
+  tags: v.array(v.string()),
+  viewer_count: v.number(),
+  started_at: v.string(),
+  language: v.string(),
+  thumbnail_url: v.string(),
+  is_mature: v.boolean(),
+});
+
+const StreamInfoResponse = v.object({
+  data: v.array(StreamInfo),
+  pagination: v.object({
+    cursor: v.optional(v.string()),
+  }),
+});
+
+export async function getLiveStreamInfo(): Promise<v.InferOutput<
+  typeof StreamInfo
+> | null> {
+  const url = new URL(Twitch.StreamsURL);
+  url.searchParams.set("user_id", Resource.AppConfig.BroadcasterUserID);
+
+  const streamsRequest = (token: string) =>
+    new Request(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Client-ID": Resource.TwitchClientID.value,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+
+  const response = await fetchWithAccessToken(streamsRequest);
+
+  console.log("about to parse body");
+  const body = v.parse(StreamInfoResponse, await response.json());
+  console.log("after the parse body");
+  let { pagination, data: streams } = body;
+  let i = 0;
+  if (pagination.cursor)
+    console.log("surprisingly, there are more pages", streams);
+  while (pagination.cursor && streams.length === 0) {
+    console.log("Multiple pages?", ++i);
+    url.searchParams.set("after", pagination.cursor);
+    const response = await fetchWithAccessToken(streamsRequest);
+    const body = v.parse(StreamInfoResponse, await response.json());
+    pagination = body.pagination;
+    streams.push(...body.data);
+  }
+
+  const result = streams[0];
+  if (!result) return null;
+
+  return result;
 }

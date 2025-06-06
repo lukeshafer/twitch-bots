@@ -7,6 +7,7 @@ import {
   getCommandText,
   removeCommand,
 } from "./commands.js";
+import { addQuote, getQuoteCommandHandler } from "./quotes.js";
 
 export async function setupSnaleBot() {
   const snale = new TwitchBot({
@@ -35,6 +36,9 @@ export async function setupSnaleBot() {
   snale.commands.addcommand = (options) => addCommand(snale, options);
   snale.commands.editcommand = (options) => editCommand(snale, options);
   snale.commands.removecommand = (options) => removeCommand(snale, options);
+
+  snale.commands.addquote = (options) => addQuote(snale, options);
+  snale.commands.quote = (options) => getQuoteCommandHandler(snale, options);
 
   snale.onTokenRefresh = async (tokens) =>
     setTwitchTokens(snale.userID, tokens);

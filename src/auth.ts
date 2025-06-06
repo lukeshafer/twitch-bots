@@ -92,9 +92,11 @@ export async function getTwitchTokens(userID: string) {
   try {
     return v.parse(Tokens, await JSON.parse(secret || "{}"));
   } catch (error) {
-    await ssm.send(
-      new SSM.DeleteParameterCommand({ Name: tokenParamName(userID) }),
-    ).catch(() => { /* param may not exist */});
+    await ssm
+      .send(new SSM.DeleteParameterCommand({ Name: tokenParamName(userID) }))
+      .catch(() => {
+        /* param may not exist */
+      });
     console.error(error);
     throw new Error("Failed to parse Twitch tokens");
   }
@@ -153,5 +155,9 @@ export async function fetchWithAccessToken(
   }
 
   console.log(`Response status: "${response.statusText}"`);
+
+  if (!response.ok) {
+    console.log(`Response body: "${await response.text()}"`);
+  }
   return response;
 }

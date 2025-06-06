@@ -1,5 +1,5 @@
 {
-  "name": "hono",
+  "name": "twitch-bots",
   "type": "module",
   "scripts": {
     "sst": "sst",

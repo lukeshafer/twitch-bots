@@ -101,4 +101,31 @@ export const toxicResponseTimeout = new Entity(
     },
   },
   config,
-)
+);
+
+export type Quote = ElectroDB.EntityItem<typeof quotes>
+export const quotes = new Entity(
+  {
+    model: { entity: "quote", version: "1", service },
+    attributes: {
+      number: { type: "number", required: true },
+      text: { type: "string", required: true },
+      date: { type: "string", required: true },
+      category: { type: "string", required: true },
+      createdBy: { type: "string", required: true },
+      ...dateAttributes(),
+    },
+    indexes: {
+      primary: {
+        pk: { field: "pk", composite: ["number"] },
+        sk: { field: "sk", composite: [] },
+      },
+      byDate: {
+        index: "gsi1",
+        pk: { field: "gsi1pk", composite: ["category"] },
+        sk: { field: "gsi1sk", composite: ["date"] },
+      },
+    },
+  },
+  config,
+);
