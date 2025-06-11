@@ -5,7 +5,8 @@
     "sst": "sst",
     "dev": "sst dev",
     "build": "sst build",
-    "deploy": "sst deploy"
+    "deploy": "sst deploy",
+    "refresh-secret": "node -e \"console.log(require('crypto').randomBytes(256).toString('base64'))\" | pnpm run sst secret set AuthSecret"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.821.0",

@@ -30,6 +30,7 @@ export default $config({
 
     const clientID = new sst.Secret("TwitchClientID");
     const clientSecret = new sst.Secret("TwitchClientSecret");
+    const authSecret = new sst.Secret("AuthSecret");
 
     const domain =
       $app.stage === "production"
@@ -64,7 +65,7 @@ export default $config({
       },
       handler: "src/index.handler",
       copyFiles: [{ from: "public" }],
-      link: [clientID, clientSecret, appConfig, db, apiRouter],
+      link: [clientID, clientSecret, authSecret, appConfig, db, apiRouter],
       permissions: [ssmPermission],
     });
   },

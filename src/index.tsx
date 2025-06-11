@@ -3,14 +3,14 @@ import * as v from "valibot";
 import { decode } from "hono/jwt";
 import { handle } from "hono/aws-lambda";
 import {
+  setSession,
   generateState,
-  setAppAccessToken,
   setTwitchTokens,
   verifyState,
+  getSession,
 } from "./auth.js";
 import {
   createAuthURL,
-  generateAppAccessToken,
   generateAuthTokensFromAccessCode,
   handleTwitchRequest,
 } from "./twitch.js";
@@ -19,6 +19,7 @@ import { setupSnaleBot } from "./snale/bot.js";
 import { setupToxicMan } from "./toxic-man/bot.js";
 import { commands } from "./data.js";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { For, Show } from "./components/utils.js";
 
 const app = new Hono();
 
@@ -38,25 +39,38 @@ app.get("/", async (c) => {
     .then((bot) => bot.getCommandsList())
     .catch(() => []);
 
+  const userID = await getSession(c);
+
   return c.html(
     <html>
       <head>
         <link rel="stylesheet" href="/style.css" />
       </head>
       <body>
-        {Object.entries(c.req.query()).map(([key, value]) => (
-          <p
-            style={
-              key.toLowerCase().includes("error") ? "color: red;" : undefined
-            }
-          >
-            <b>{key}</b>: {value}
-          </p>
-        ))}
+        <Show when={userID}>
+          <p>Logged in as {userID}</p>
+        </Show>
+        <For
+          each={Object.entries(c.req.query())}
+          child={([key, value]) => (
+            <p
+              style={
+                key.toLowerCase().includes("error") ? "color: red;" : undefined
+              }
+            >
+              <b>{key}</b>: {value}
+            </p>
+          )}
+        />
 
-        <form method="post" action="/login">
+        <form method="post" action="/auth/login">
           <button type="submit">Login</button>
         </form>
+        <Show when={userID === Resource.AppConfig.BroadcasterUserID}>
+          <form method="post" action="/refresh">
+            <button type="submit">Refresh</button>
+          </form>
+        </Show>
         <div>
           <header>
             <h1>Commands from DB</h1>
@@ -101,11 +115,11 @@ app.get("/", async (c) => {
 
 app.use("*", serveStatic({ root: "./public" }));
 
-app.post("/login", async (c) => {
+app.post("/auth/login", async (c) => {
   let authURL = createAuthURL({
     state: await generateState(),
     clientID: Resource.TwitchClientID.value,
-    redirectUri: `${Resource.ApiRouter.url}/callback`,
+    redirectUri: `${Resource.ApiRouter.url}/auth/callback`,
   });
 
   return c.redirect(authURL);
@@ -121,7 +135,7 @@ const Claims = v.object({
   preferred_username: v.string(),
 });
 
-app.get("/callback", async (c) => {
+app.get("/auth/callback", async (c) => {
   let code = c.req.query("code");
   let state = c.req.query("state");
 
@@ -139,7 +153,7 @@ app.get("/callback", async (c) => {
     return c.redirect(`/?` + params.toString());
   }
 
-  let isValidState = verifyState(state);
+  let isValidState = await verifyState(state);
   if (!isValidState) {
     const params = new URLSearchParams({
       error: "INVALID STATE",
@@ -150,7 +164,7 @@ app.get("/callback", async (c) => {
   try {
     const tokens = await generateAuthTokensFromAccessCode({
       code,
-      redirectUri: `${Resource.ApiRouter.url}/callback`,
+      redirectUri: `${Resource.ApiRouter.url}/auth/callback`,
     });
 
     const tokensToSave = {
@@ -182,7 +196,7 @@ app.get("/callback", async (c) => {
 
       case Resource.AppConfig.BroadcasterUserID:
         await setTwitchTokens(claims.sub, tokensToSave);
-        await generateAppAccessToken().then(setAppAccessToken);
+        // await generateAppAccessToken().then(setAppAccessToken);
         params.set("notice", "Refreshed App Access Token!");
         break;
 
@@ -196,6 +210,10 @@ app.get("/callback", async (c) => {
       }
     }
 
+    if (claims.sub) {
+      console.log("Setting session");
+      await setSession(c, claims.sub);
+    }
     return c.redirect(`/?${params.toString()}`);
   } catch (e: any) {
     console.error(e);
@@ -233,6 +251,18 @@ app.post("/bots/toxic-man", async (c) => {
   }
 
   return c.res;
+});
+
+app.post("/refresh", async (c) => {
+  const session = await getSession(c);
+  if (session == null || session !== Resource.AppConfig.BroadcasterUserID) {
+    return c.redirect(`/?error=unauthorized!!`);
+  }
+
+  await setupSnaleBot().then((bot) => bot.registerEventSubListeners());
+  await setupToxicMan().then((bot) => bot.registerEventSubListeners());
+
+  return c.redirect(`/?msg=Refreshed%20bots`);
 });
 
 export const handler = handle(app);

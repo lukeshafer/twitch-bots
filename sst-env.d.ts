@@ -17,6 +17,10 @@ declare module "sst" {
       "ToxicUserID": string
       "type": "sst.sst.Linkable"
     }
+    "AuthSecret": {
+      "type": "sst.sst.Secret"
+      "value": string
+    }
     "BotData": {
       "name": string
       "type": "sst.aws.Dynamo"

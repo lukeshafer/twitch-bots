@@ -4,6 +4,10 @@ import { Resource } from "sst";
 import * as v from "valibot";
 import { authStates } from "./data.js";
 import { generateAppAccessToken } from "./twitch.js";
+import { sign, verify } from "hono/jwt";
+import type { JWTPayload } from "hono/utils/jwt/types";
+import type { Context } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
 
 const ssm = new SSM.SSMClient();
 
@@ -160,4 +164,62 @@ export async function fetchWithAccessToken(
     console.log(`Response body: "${await response.text()}"`);
   }
   return response;
+}
+
+const TOKEN_COOKIE = "auth_token";
+
+export async function setSession(c: Context, userID: string) {
+  const payload: JWTPayload = {
+    sub: userID,
+    exp: Now() + Time(30).days,
+    iat: Now(),
+  };
+
+  console.log("Signing and setting token", JSON.stringify(payload, null, 2));
+  const token = await sign(payload, Resource.AuthSecret.value);
+
+  return await setCookie(c, TOKEN_COOKIE, token, {
+    domain: Resource.AppConfig.DomainName,
+    httpOnly: true,
+    maxAge: Time(1).years,
+    path: "/",
+    secure: true,
+  });
+}
+
+export async function getSession(c: Context): Promise<string | null> {
+  const cookie = await getCookie(c, "auth_token");
+
+  if (!cookie) {
+    console.error("Cookie not found!");
+    return null;
+  }
+
+  console.log("Found cookie, verifying");
+  try {
+    const token = await verify(cookie, Resource.AuthSecret.value);
+    return (token.sub as string) || null;
+  } catch {
+    return null;
+  }
+}
+
+const Now = () => Math.floor(Date.now() / 1000);
+type ConvertClass = Omit<typeof Convert, "prototype">;
+export const Time = (value: number): ConvertClass =>
+  new Proxy(Convert, {
+    get(target, property: keyof ConvertClass) {
+      let converted = value * Convert[property];
+      console.log({ converted });
+      return converted;
+    },
+  });
+
+class Convert {
+  static seconds = 1;
+  static minutes = 60 * this.seconds;
+  static hours = 60 * this.minutes;
+  static days = 24 * this.hours;
+  static months = 30 * this.days;
+  static years = 365 * this.days;
 }
